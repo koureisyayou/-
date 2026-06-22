@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>かんたん バーコードよみとり</title>
+    
+    <!-- iOSホーム画面追加時のアプリ化設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="かんたんよみとり">
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <style>
+        body {
+            font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            background: #f7f9fa;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .setsumei {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        /* カメラが映る緑色の大きな枠 */
+        #reader {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            background: white;
+            border: 4px solid #4CAF50;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        /* 結果表示エリア（大きな文字と優しい緑色） */
+        #result-box {
+            margin-top: 25px;
+            padding: 20px;
+            background: #e8f5e9;
+            border: 2px solid #81c784;
+            border-radius: 12px;
+            max-width: 450px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .status-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2e7d32;
+            margin: 0 0 10px 0;
+        }
+        #result {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1b5e20;
+            word-break: break-all;
+        }
+        /* 次を読み取るための巨大な青色ボタン */
+        .retry-btn {
+            display: none; /* 最初は隠しておきます */
+            width: 100%;
+            max-width: 450px;
+            margin: 20px auto 0 auto;
+            padding: 18px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 6px #0056b3;
+            cursor: pointer;
+        }
+        .retry-btn:active {
+            box-shadow: none;
+            transform: translateY(6px);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>かんたん バーコードよみとり</h1>
+    <p id="guide" class="setsumei">しかくのなかに、バーコードをうつしてください</p>
+    
+    <div id="reader"></div>
+    
+    <div id="result-box">
+        <p class="status-title">よみとり結果</p>
+        <div id="result">おまちください</div>
+    </div>
+
+    <button id="retry-btn" class="retry-btn" onclick="startScanner()">つぎの を よみとる</button>
+
+    <script>
+        let html5QrcodeScanner;
+
+        // 【カメラ起動・再起動処理】
+        function startScanner() {
+            // 1. 画面の案内文字やボタンを最初の状態に戻す
+            document.getElementById('result').innerText = "おまちください";
+            document.getElementById('guide').innerText = "しかくのなかに、バーコードをうつしてください";
+            document.getElementById('retry-btn').style.display = "none"; 
+
+            // 2. カメラ枠の中身を完全に空っぽ（リセット）にする
+            document.getElementById('reader').innerHTML = "";
+
+            // 3. 安全かつバーコード認識を強化した設定でスキャナーを作成
+            // (Html5QrcodeScannerの仕様に合わせ、競合するvideoConstraintsを削除)
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", 
+                { 
+                    fps: 20, // 1秒間の読み取り回数を増やして反応を良くする
+                    qrbox: { width: 320, height: 120 }, // バーコードが入りやすい横長の枠
+                    aspectRatio: 1.0,
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    }
+                },
+                /* verbose= */ false
+            );
+            
+            // 起動（初期起動時にユーザーがカメラを選択できる標準UIが動きます）
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        }
+
+        // 【読み取りに成功したときの処理】
+        function onScanSuccess(decodedText, decodedResult) {
+            // 特大文字で数字を表示
+            document.getElementById('result').innerText = decodedText;
+            document.getElementById('guide').innerText = "よみとりました！";
+            
+            // スマホを一瞬「ブッ」と震わせて通知（耳が遠くても分かりやすい）
+            if (navigator.vibrate) {
+                navigator.vibrate(200);
+            }
+            
+            // 画面がピコピコ動いて混乱しないよう、一度カメラを完全に停止してボタンを出す
+            html5QrcodeScanner.clear().then(() => {
+                document.getElementById('retry-btn').style.display = "block"; 
+            }).catch(err => {
+                console.error("スキャナーの停止に失敗しました:", err);
+                // 万が一エラーが起きてもボタンだけは出す安全設計
+                document.getElementById('retry-btn').style.display = "block"; 
+            });
+        }
+
+        // 【読み取り失敗時（スキャン中常に発生するものはログに流すだけ）】
+        function onScanFailure(error) {
+            console.warn(`Code scan error = ${error}`);
+        }
+
+        // ページを開いた瞬間に、自動でカメラをスタート
+        startScanner();
+    </script>
+</body>
+</html>
