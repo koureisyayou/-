@@ -65,7 +65,7 @@
             word-break: break-all;
             margin: 10px 0;
         }
-        /* ホームページを開く特大ボタン */
+        /* ボタンの共通スタイル */
         .go-btn {
             display: none; 
             width: 100%;
@@ -75,13 +75,26 @@
             font-size: 32px;
             font-weight: bold;
             color: white;
-            background-color: #2e7d32; /* 優しい深緑 */
             border: none;
             border-radius: 16px;
-            box-shadow: 0 8px #1b5e20;
             cursor: pointer;
         }
-        .go-btn:active {
+        /* ひらくボタン（緑） */
+        #go-btn {
+            background-color: #2e7d32;
+            box-shadow: 0 8px #1b5e20;
+        }
+        #go-btn:active {
+            box-shadow: none;
+            transform: translateY(8px);
+        }
+        /* もう一度よみとるボタン（青） */
+        #retry-btn {
+            display: none;
+            background-color: #1565c0;
+            box-shadow: 0 8px #0d3c75;
+        }
+        #retry-btn:active {
             box-shadow: none;
             transform: translateY(8px);
         }
@@ -99,20 +112,19 @@
     </div>
 
     <button id="go-btn" class="go-btn" onclick="openTargetUrl()">➔ ホームページをひらく</button>
+    <button id="retry-btn" class="go-btn" onclick="location.reload()">➔ もう一度よみとる</button>
 
     <script>
         let html5Qrcode = null; 
         let targetUrl = "";
         let audioCtx = null;
 
-        // ピッ音を鳴らす関数（suspended制限＋エラー対策を追加）
+        // ピッ音を鳴らす関数
         function playBeep() {
             try {
                 if (!audioCtx) {
                     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 }
-                
-                // 【さらに強化】ブラウザの制限で音が眠っていたら起こす（失敗してもエラーを出さない）
                 if (audioCtx && audioCtx.state === "suspended") {
                     audioCtx.resume().catch(() => {});
                 }
@@ -145,9 +157,10 @@
 
         // カメラ起動
         function startScanner() {
-            document.getElementById('result').innerText = "カメラをじゅんび　しています";
+            document.getElementById('result').innerText = "カメラをじゅんび しています";
             document.getElementById('guide').innerText = "しかくのなかに うつしてください";
             document.getElementById('go-btn').style.display = "none"; 
+            document.getElementById('retry-btn').style.display = "none"; 
             targetUrl = "";
 
             if (!html5Qrcode) {
@@ -169,10 +182,11 @@
                 document.getElementById('result').innerText = "うつしてください";
             }).catch(err => {
                 document.getElementById('result').innerText = "うつりません";
+                document.getElementById('retry-btn').style.display = "block";
             });
         }
 
-        // 読み取り成功
+        // 読み取り成功時の処理
         function onScanSuccess(decodedText, decodedResult) {
             playBeep();
             if (navigator.vibrate) { navigator.vibrate([100, 50, 100]); }
@@ -182,29 +196,69 @@
             // カメラを完全に停止
             html5Qrcode.stop().then(() => {
                 
-                // 1. まずはURLかどうかを判定
+                // 【洗練】最初にあらゆる余白（全角スペース含む）を綺麗にする
+                let text = decodedText.trim().replace(/\u3000/g, " ");
                 let isUrl = false;
-                try {
-                    new URL(decodedText.trim());
-                    isUrl = true;
-                } catch(e) {}
+                let fixed = text;
 
-                // 2. URLだった場合の処理
-                if (isUrl) {
-                    targetUrl = decodedText.trim();
-                    document.getElementById('result').innerText = "ホームページがみつかりました"; 
-                    document.getElementById('go-btn').style.display = "block";   
-                } 
-                // 3. URLではなかった場合（数字や長い文字コードなど）の処理
-                else {
-                    if (decodedText.length > 40) {
-                        document.getElementById('result').innerText = "よみとれました";
-                    } else {
-                        document.getElementById('result').innerText = decodedText; 
-                    }
+                // 【洗練】httpから始まらず、ドットがあり、メールやスペースがない場合に補完
+                if (
+                    !/^https?:\/\//i.test(fixed) &&
+                    fixed.includes(".") &&
+                    !fixed.includes("@") &&
+                    !fixed.includes(" ")
+                ) {
+                    fixed = "https://" + fixed;
                 }
+
+                // 最終的なURL判定
+                if (/^https?:\/\//i.test(fixed)) {
+                    isUrl = true;
+                }
+
+                if (isUrl) {
+                    try {
+                        // 正しいURL形式か検証
+                        new URL(fixed);
+                        targetUrl = fixed;
+
+                        // アプリストアのURLかチェック
+                        const isAppStore = targetUrl.includes("apps.apple.com") || targetUrl.includes("play.google.com");
+                        const goBtn = document.getElementById('go-btn');
+
+                        if (isAppStore) {
+                            document.getElementById('result').innerText = "アプリがみつかりました";
+                            goBtn.innerText = "➔ アプリストアをひらく";
+                        } else {
+                            document.getElementById('result').innerText = "ホームページがみつかりました";
+                            goBtn.innerText = "➔ ホームページをひらく";
+                        }
+
+                        // 0.3秒後に「ひらく」ボタンを表示
+                        setTimeout(() => {
+                            goBtn.style.display = "block";
+                        }, 300);
+
+                    } catch (e) {
+                        // URL検証エラー時は「読み取りました：」をつけてテキスト表示
+                        document.getElementById('result').innerText = "読み取りました：" + text;
+                    }
+                } else {
+                    // URLではない場合は「読み取りました：○○」とする
+                    document.getElementById('result').innerText = "読み取りました：" + text;
+                }
+
+                // 0.3秒後に「もう一度よみとる」ボタンを表示
+                setTimeout(() => {
+                    document.getElementById('retry-btn').style.display = "block";
+                }, 300);
+
             }).catch(err => {
                 console.error(err);
+                // 【タフネス補強】二重エラーを防ぐ安全なクリーンアップ
+                try {
+                    html5Qrcode.clear();
+                } catch(e) {}
             });
         }
 
